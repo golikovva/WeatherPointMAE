@@ -3,7 +3,7 @@ from typing import Callable, List, Dict, Tuple, Any
 import torch
 import numpy as np
 
-from gridded_datasets import NCs2sDataset, WRFs2sDataset, ERAs2sDataset
+from libs.datasets.gridded_datasets import NCs2sDataset, WRFs2sDataset, ERAs2sDataset
 
 class PointWeatherDataset(NCs2sDataset):
     def __init__(self, data_folder, data_variables=None):
@@ -34,8 +34,10 @@ def pc_dataset(cls):
         super(cls, self).__init__(*args, **kwargs)
 
     def __getitem__(self, index):
-        data = cls.__getitem__(self, index)
-        return data
+        data = cls.__getitem__(self, index).squeeze(0)  # remove seq_len dimension
+        data = data.reshape(*data.shape[:-2], -1).T  # flatten all but the first dimension
+        coords = np.stack((self.grid.latitude.flatten(), self.grid.longitude.flatten()), axis=-1)
+        return data, coords
 
     return type(cls.__name__, (cls,), {
         '__init__': __init__,

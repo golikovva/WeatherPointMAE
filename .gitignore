@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+.ipynb_checkpoints/Untitled-checkpoint.ipynb
+Untitled.ipynb
+.gitignore
+.vscode/sftp.json
