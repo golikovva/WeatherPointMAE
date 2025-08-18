@@ -37,8 +37,7 @@ def pc_dataset(cls):
         data = cls.__getitem__(self, index).squeeze(0)  # remove seq_len dimension
         data = data.reshape(*data.shape[:-2], -1).T  # flatten all but the first dimension
         coords = np.stack((self.grid.latitude.flatten(), self.grid.longitude.flatten()), axis=-1)
-        data = {'data': data, 'coords': coords}
-        return data
+        return data, coords
 
     return type(cls.__name__, (cls,), {
         '__init__': __init__,

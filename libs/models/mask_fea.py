@@ -2,14 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import timm
-from timm.models.layers import DropPath, trunc_normal_
+from timm.layers import DropPath, trunc_normal_
 import numpy as np
-from .build import MODELS
-from lib import misc
-from lib.logger import *
+from libs.models import pc_utils as misc
 import random
 from knn_cuda import KNN
-from lib.loss_util import cosine_similarity_loss, abs_cosine_similarity_loss
+from libs.models.loss_utils import cosine_similarity_loss, abs_cosine_similarity_loss
 
 NORM_DICT = {
     "bn1d": nn.BatchNorm1d,
@@ -329,7 +327,7 @@ class MaskTransformer(nn.Module):
         self.depth = config.transformer_config.depth 
         self.drop_path_rate = config.transformer_config.drop_path_rate
         self.num_heads = config.transformer_config.num_heads 
-        print_log(f'[args] {config.transformer_config}', logger = 'Transformer')
+        print(f'[args] {config.transformer_config}')
         # embedding
         self.encoder_dims =  config.transformer_config.encoder_dims
         self.encoder = Encoder(encoder_channel = self.encoder_dims)
@@ -443,11 +441,9 @@ class MaskTransformer(nn.Module):
 
         return x_vis, bool_masked_pos
 
-@MODELS.register_module()
 class MaskFeat(nn.Module):
     def __init__(self, config):
         super().__init__()
-        print_log(f'[Point_feat] ', logger ='Point_feat')
         self.config = config
         self.trans_dim = config.transformer_config.trans_dim
         self.MAE_encoder = MaskTransformer(config)
@@ -474,7 +470,7 @@ class MaskFeat(nn.Module):
             num_heads=self.decoder_num_heads,
         )
 
-        print_log(f'[PointFeat] divide point cloud into G{self.num_group} x S{self.group_size} points ...', logger ='PointFeat')
+        print(f'[PointFeat] divide point cloud into G{self.num_group} x S{self.group_size} points ...',)
         self.group_divider = Group(num_group = self.num_group, group_size = self.group_size)
             
         # prediction head
@@ -501,7 +497,7 @@ class MaskFeat(nn.Module):
 
        
     def forward(self, pts, gt_normal, gt_sv, vis = False, noaug=False, **kwargs):
-        neighborhood, center, neighborhood_global, neighborhood_normal, neighborhood_sv = self.group_divider(pts, gt_normal, gt_sv)
+        neighborhood, center, neighborhood_global, _, neighborhood_sv = self.group_divider(pts, gt_normal, gt_sv)
         
         x_vis, mask = self.MAE_encoder(neighborhood, center, noaug=noaug)
         if self.svm_pool == 'max':
@@ -519,13 +515,13 @@ class MaskFeat(nn.Module):
         pos_emb_vis = self.decoder_pos_embed(center[~mask]).reshape(B, -1, C)
         
         mask_pts = neighborhood_global[mask].reshape(B, -1, 3)
-        mask_normal = neighborhood_normal[mask].reshape(B, -1, 3)
+        # mask_normal = neighborhood_normal[mask].reshape(B, -1, 3)
         mask_sv = neighborhood_sv[mask].reshape(B, -1, 1)
 
         if self.query_points < 1.:
             query_num = int(mask_pts.shape[1] * self.query_points)
             mask_pts = mask_pts[:,:query_num].contiguous()
-            mask_normal = mask_normal[:,:query_num].contiguous()
+            # mask_normal = mask_normal[:,:query_num].contiguous()
             mask_sv = mask_sv[:,:query_num].contiguous()
 
         query_pos_emb = self.decoder_pos_embed(mask_pts.reshape(-1, 3)).reshape(B, -1, C)
@@ -539,17 +535,17 @@ class MaskFeat(nn.Module):
         pred_sv = self.mlp_sv_output(query_feat.permute(1, 0, 2))
         
         sv_loss = self.sv_loss_func(pred_sv.view(-1), mask_sv.view(-1)).mean()
-        pred_normal = self.mlp_normal_output(query_feat.permute(1, 0, 2))
+        # pred_normal = self.mlp_normal_output(query_feat.permute(1, 0, 2))
         
-        if self.normal_loss == 'mse_only':
-            normal_loss = self.grad_loss_func(pred_normal, mask_normal)
-        else:
-            norm_loss = ((pred_normal.norm(2, dim=-1) - 1) ** 2).mean()
-            grad_loss = self.grad_loss_func(pred_normal, mask_normal)        
-            normal_loss = 0.1*norm_loss + grad_loss
-    
+        # if self.normal_loss == 'mse_only':
+        #     normal_loss = self.grad_loss_func(pred_normal, mask_normal)
+        # else:
+        #     norm_loss = ((pred_normal.norm(2, dim=-1) - 1) ** 2).mean()
+        #     grad_loss = self.grad_loss_func(pred_normal, mask_normal)        
+        #     normal_loss = 0.1*norm_loss + grad_loss
+        normal_loss=0
         metrics = {'sv_loss': sv_loss, 'normal_loss': normal_loss}
-
+        
         loss = sv_loss + normal_loss
 
         return loss, metrics
